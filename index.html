@@ -309,4 +309,23 @@ function runDiag() {
             }
         };
 
-        const update
+        const updateInputs = () => {
+            document.getElementById('inX').value = shots.map(s => s.x.toFixed(1)).join(',');
+            document.getElementById('inY').value = shots.map(s => s.y.toFixed(1)).join(',');
+            document.getElementById('targetCounter').innerText = shots.length;
+        };
+
+        const getPos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (cx - rect.left) * (canvas.width / rect.width),
+                y: (cy - rect.top) * (canvas.height / rect.height),
+                cssX: cx - rect.left, cssY: cy - rect.top
+            };
+        };
+
+        const handleMove = (e) => {
+            if (!isDragging) return;
+    
