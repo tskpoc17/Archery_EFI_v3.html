@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EFI 射箭雙軸診斷系統</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 480px; }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .section-title { background: #e7f3ff; padding: 10px 15px; border-radius: 8px; font-weight: bold; color: #007AFF; margin: 20px 0 10px 0; border-left: 5px solid #007AFF; }
+        label { font-weight: bold; font-size: 14px; color: #333; display: block; margin-top: 12px; margin-bottom: 5px; }
+        .row { display: flex; gap: 8px; margin-bottom: 5px; }
+        .row > div { flex: 1; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; background-color: #fff; }
+        .note { font-size: 12px; color: #777; background-color: #f8f9fa; padding: 8px; border-radius: 8px; margin-top: 4px; line-height: 1.4; }
+        button { width: 100%; padding: 16px; background: #007AFF; color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 25px; }
+        .res-container { display: none; margin-top: 25px; }
+        .res-block { padding: 18px; background: #f0f9ff; border-radius: 15px; border: 1px solid #bce0fd; margin-bottom: 20px; }
+        .summary-block { padding: 18px; background: #fff4e5; border-radius: 15px; border: 1px solid #ffe2b3; margin-bottom: 20px; }
+        .stat-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #d1e9ff; font-size: 14px; align-items: center; }
+        .stat-value { font-weight: bold; text-align: right; color: #333; }
+        .efi-val { color: #007AFF; font-size: 24px; font-weight: 900; }
+        .trend-up { color: #28a745; font-weight: bold; }
+        .trend-down { color: #dc3545; font-weight: bold; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>🎯 EFI 射箭雙軸診斷系統</h2>
+
+    <label>🎯 靶紙係數設定 / 距離推估係數K值設定</label>
+    <div class="row">
+        <select id="faceSize">
+            <option value="122">122cm (70m大靶)</option>
+            <option value="80" selected>80cm (30/50m中靶)</option>
+        </select>
+        <input type="number" id="kValue" value="1" step="0.1" placeholder="K值">
+    </div>
+
+    <div class="section-title">⚖️ X 軸水平座標cm </div>
+    <div class="row">
+        <input type="number" id="pxE" step="0.0001" placeholder="前次 EFI">
+        <input type="number" id="pxM" step="0.01" placeholder="前次離差">
+    </div>
+    <input type="text" id="inX" placeholder="輸入 X 座標，用逗點隔開">
+    <div class="note">右側為正 (+)，左側為負 (-)</div>
+
+    <div class="section-title">↕️ Y 軸垂座標cm</div>
+    <div class="row">
+        <input type="number" id="pyE" step="0.0001" placeholder="前次 EFI">
+        <input type="number" id="pyM" step="0.01" placeholder="前次離差">
+    </div>
+    <input type="text" id="inY" placeholder="輸入 Y 座標，用逗點隔開">
+    <div class="note">上方為正 (+)，下方為負 (-)</div>
+
+    <button onclick="runDiag()">執行雙軸數據診斷</button>
+
+    <div id="out" class="res-container">
+        <div id="summary" class="summary-block">
+            <div style="font-weight:bold; color:#e67e22; margin-bottom:8px;">💡 綜合分析建議</div>
+            <div id="summaryText" style="font-size:15px; line-height:1.5; color:#5d4037; white-space: pre-wrap;"></div>
+        </div>
+
+        <div class="res-block">
+            <div style="font-weight:bold; color:#007AFF; margin-bottom:12px;">📊 X 軸水平分析報告</div>
+            <div class="stat-item"><span>本次 EFI 指標</span><span id="rxE" class="efi-val"></span></div>
+            <div id="cxE" class="stat-item" style="display:none;"><span>EFI 趨勢</span><span id="dxE" class="stat-value"></span></div>
+            <div class="stat-item"><span>中心偏移平均</span><span id="offX" class="stat-value"></span></div>
+            <div class="stat-item"><span>動作一致性 (離差)</span><span id="madX" class="stat-value"></span></div>
+            <div id="cxM" class="stat-item" style="display:none;"><span>一致性趨勢</span><span id="dxM" class="stat-value"></span></div>
+            <div class="stat-item"><span>樣本誤差機率</span><span id="prX" class="stat-value"></span></div>
+        </div>
+
+        <div class="res-block">
+            <div style="font-weight:bold; color:#007AFF; margin-bottom:12px;">📊 Y 軸垂直分析報告</div>
+            <div class="stat-item"><span>本次 EFI 指標</span><span id="ryE" class="efi-val"></span></div>
+            <div id="cyE" class="stat-item" style="display:none;"><span>EFI 趨勢</span><span id="dyE" class="stat-value"></span></div>
+            <div class="stat-item"><span>中心偏移平均</span><span id="offY" class="stat-value"></span></div>
+            <div class="stat-item"><span>動作一致性 (離差)</span><span id="madY" class="stat-value"></span></div>
+            <div id="cyM" class="stat-item" style="display:none;"><span>一致性趨勢</span><span id="dyM" class="stat-value"></span></div>
+            <div class="stat-item"><span>樣本誤差機率</span><span id="prY" class="stat-value"></span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- 這部分是你的原始邏輯，我絕對不動 ---
+function coreCalc(raw, d, k) {
+    const avg = raw.reduce((a, b) => a + b) / raw.length;
+    const R = raw.filter(v => v >= avg), L = raw.filter(v => v < avg);
+    const getM = (a) => {
+        if (!a.length) return 0;
+        const sA = a.reduce((p, c) => p + c) / a.length;
+        return a.reduce((p, c) => p + Math.abs(c - sA), 0) / a.length;
+    };
+    const mR = getM(R), mL = getM(L);
+    const dR = R.length ? Math.abs((R.reduce((a,b)=>a+b)/R.length)-avg) : 0;
+    const dL = L.length ? Math.abs((L.reduce((a,b)=>a+b)/L.length)-avg) : 0;
+    const pen = (k * dR) + (k * dL) + (k * (mR * R.length + mL * L.length) / raw.length);
+    const efi = parseFloat((10 * ((d - pen) / d) + 1).toFixed(4));
+    const mad = parseFloat(((R.length * mR) + (L.length * mL)) / raw.length);
+    return { efi, mad, avg, mR, mL, nR: R.length, nL: L.length };
+}
+
+function runDiag() {
+    const d = parseFloat(document.getElementById('faceSize').value);
+    const k = parseFloat(document.getElementById('kValue').value);
+    const xData = document.getElementById('inX').value.split(',').map(Number).filter(n => !isNaN(n));
+    const yData = document.getElementById('inY').value.split(',').map(Number).filter(n => !isNaN(n));
+
+    if (xData.length < 2 || yData.length < 2) return alert("請輸入完整數據");
+    document.getElementById('out').style.display = 'block';
+
+    const resX = coreCalc(xData, d, k);
+    const resY = coreCalc(yData, d, k);
+
+    // X軸顯示
+    document.getElementById('rxE').innerText = resX.efi;
+    document.getElementById('offX').innerText = `${resX.avg.toFixed(2)} cm ${resX.avg < 0 ? "(偏左)" : "(偏右)"}`;
+    document.getElementById('madX').innerText = resX.mad.toFixed(2);
+    const exX = resX.mR >= resX.mL ? {s:"右側", n:resX.nR} : {s:"左側", n:resX.nL};
+    document.getElementById('prX').innerText = `${((exX.n/12)*100).toFixed(0)}% (${exX.s})`;
+
+    // Y軸顯示
+    document.getElementById('ryE').innerText = resY.efi;
+    document.getElementById('offY').innerText = `${resY.avg.toFixed(2)} cm ${resY.avg < 0 ? "(偏上)" : "(偏下)"}`;
+    document.getElementById('madY').innerText = resY.mad.toFixed(2);
+    const exY = resY.mR >= resY.mL ? {s:"上側", n:resY.nR} : {s:"下側", n:resY.nL};
+    document.getElementById('prY').innerText = `${((exY.n/12)*100).toFixed(0)}% (${exY.s})`;
+
+    // 趨勢比對邏輯 (不動)
+    const compare = (curE, prevE, idRow, idVal) => {
+        if(!isNaN(prevE)) {
+            document.getElementById(idRow).style.display = 'flex';
+            const df = curE - prevE;
+            document.getElementById(idVal).innerHTML = df>=0 ? `<span class="trend-up">↑ 提升 ${df.toFixed(4)}</span>` : `<span class="trend-down">↓ 下降 ${Math.abs(df).toFixed(4)}</span>`;
+        }
+    };
+    const compareM = (curM, prevM, idRow, idVal) => {
+        if(!isNaN(prevM)) {
+            document.getElementById(idRow).style.display = 'flex';
+            const df = curM - prevM;
+            document.getElementById(idVal).innerHTML = df<0 ? `<span class="trend-up">進步 (縮小 ${Math.abs(df).toFixed(2)})</span>` : `<span class="trend-down">加油 (放大 ${df.toFixed(2)})</span>`;
+        }
+    };
+    compare(resX.efi, parseFloat(document.getElementById('pxE').value), 'cxE', 'dxE');
+    compareM(resX.mad, parseFloat(document.getElementById('pxM').value), 'cxM', 'dxM');
+    compare(resY.efi, parseFloat(document.getElementById('pyE').value), 'cyE', 'dyE');
+    compareM(resY.mad, parseFloat(document.getElementById('pyM').value), 'cyM', 'dyM');
+
+    // --- 以下為修正後的外掛建議區 ---
+    let summary = "";
+    if (resX.efi < resY.efi) {
+        summary = "⚠️ 注意 X 軸 (水平)：水平 EFI 較低，請優先檢查放弦、後手角度一致性、弦影或推點確認。";
+    } else if (resY.efi < resX.efi) {
+        summary = "⚠️ 注意 Y 軸 (垂直)：垂直 EFI 較低，請檢查推弓手壓力點是否穩定、靠弦位置、前肩穩定。";
+    } else {
+        summary = "✅ 雙軸平衡：目前器材設定在兩個維度表現均等。";
+    }
+
+    // 修正：偏左就調左，偏右就調右；偏上就調上，偏下就調下
+    const adjX = resX.avg < 0 ? "左" : "右";
+    const adjY = resY.avg < 0 ? "上" : "下";
+
+    const bestX = resX.mR < resX.mL ? "右側" : "左側";
+    const bestY = resY.mR < resY.mL ? "上側" : "下側";
+
+    summary += `\n\n🛠️ **瞄準器方向微調建議**：\n請將瞄準器向【${adjX}】且向【${adjY}】撥動。`;
+    summary += `\n\n✨ **較精準的動作表現側**：\n水平方向以【${bestX}】較穩，垂直方向以【${bestY}】較穩。請回想並保持該側發力感。`;
+
+    document.getElementById('summaryText').innerText = summary;
+}
+</script>
+</body>
+</html>
+<script>
+(function() {
+    const STORAGE_KEY = 'archery_history_list';
+
+    window.addEventListener('load', function() {
+        const mainBtn = document.querySelector('button[onclick="runDiag()"]');
+        if (!mainBtn) return;
+
+        const pluginContainer = document.createElement('div');
+        pluginContainer.style = "margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 1px solid #ddd;";
+        
+        // 修正點：在按鈕 style 加入 display:flex; align-items:center; justify-content:center;
+        pluginContainer.innerHTML = `
+            <div style="font-weight:bold; font-size:14px; margin-bottom:10px; color:#555;">💾 歷史紀錄管理</div>
+            <button id="p_btnSave" style="width:100%; padding:0; height:48px; background:#28a745; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer; margin-bottom:12px; font-size:16px; display:flex; align-items:center; justify-content:center;">🕒 以當前時間儲存數據</button>
+            
+            <div style="display:flex; gap:8px; align-items: center;">
+                <select id="p_recordSelect" style="flex:1.2; padding:0 10px; border-radius:8px; border:1px solid #ccc; height:48px; font-size:14px; background:white;"></select>
+                <button id="p_btnLoad" style="flex:2; height:48px; background:#6f42c1; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center;">載入紀錄</button>
+                <button id="p_btnDel" style="width:55px; height:48px; background:#dc3545; color:white; border:none; border-radius:8px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center;">刪除</button>
+            </div>
+        `;
+        mainBtn.parentNode.insertBefore(pluginContainer, mainBtn.nextSibling);
+
+        const recordSelect = document.getElementById('p_recordSelect');
+
+        const updateDropdown = () => {
+            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            recordSelect.innerHTML = '<option value="">紀錄</option>';
+            Object.keys(history).sort().reverse().forEach(time => {
+                const opt = document.createElement('option');
+                opt.value = time;
+                opt.innerText = time;
+                recordSelect.appendChild(opt);
+            });
+        };
+
+        document.getElementById('p_btnSave').onclick = function() {
+            const now = new Date();
+            const timeKey = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+            const currentData = {
+                pxE: document.getElementById('pxE').value, pxM: document.getElementById('pxM').value, inX: document.getElementById('inX').value,
+                pyE: document.getElementById('pyE').value, pyM: document.getElementById('pyM').value, inY: document.getElementById('inY').value,
+                k: document.getElementById('kValue').value
+            };
+            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            history[timeKey] = currentData;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+            updateDropdown();
+            alert('✅ 已存為：' + timeKey);
+        };
+
+        document.getElementById('p_btnLoad').onclick = function() {
+            const timeKey = recordSelect.value;
+            if (!timeKey) return alert('請選擇紀錄');
+            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            const d = history[timeKey];
+            if (d) {
+                document.getElementById('pxE').value = d.pxE; document.getElementById('pxM').value = d.pxM; document.getElementById('inX').value = d.inX;
+                document.getElementById('pyE').value = d.pyE; document.getElementById('pyM').value = d.pyM; document.getElementById('inY').value = d.inY;
+                document.getElementById('kValue').value = d.k;
+                alert('📂 載入成功');
+            }
+        };
+
+        document.getElementById('p_btnDel').onclick = function() {
+            const timeKey = recordSelect.value;
+            if (!timeKey) return alert('請選擇');
+            if (confirm('確定刪除？')) {
+                const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+                delete history[timeKey];
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+                updateDropdown();
+            }
+        };
+
+        updateDropdown();
+
+        const originalRunDiag = window.runDiag;
+        window.runDiag = function() {
+            originalRunDiag();
+            const summaryText = document.getElementById('summaryText');
+            if (summaryText) {
+                const now = new Date();
+                const timeStr = `\n\n🕒 診斷時間：${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+                if (!summaryText.innerText.includes('🕒 診斷時間')) {
+                    summaryText.innerText += timeStr;
+                } else {
+                    summaryText.innerText = summaryText.innerText.replace(/🕒 診斷時間：.*/, `🕒 診斷時間：${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`);
+                }
+            }
+        };
+    });
+})();
+</script>
+
+<script>
+(function() {
+    window.addEventListener('load', function() {
+        // 1. 尋找插入點 (插在 "X 軸水平座標cm" 標題之前)
+        const allSectionTitles = document.querySelectorAll('.section-title');
+        let xSectionTitle = null;
+        for (let i = 0; i < allSectionTitles.length; i++) {
+            if (allSectionTitles[i].innerText.includes('X 軸水平座標')) {
+                xSectionTitle = allSectionTitles[i];
+                break;
+            }
+        }
+        
+        if (!xSectionTitle) return; // 找不到插入點則跳過
+
+        // 2. 建立 UI 結構
+        const targetContainer = document.createElement('div');
+        targetContainer.style = "margin: 20px 0; padding: 15px; background: #fff; border: 2px dashed #007AFF; border-radius: 12px; text-align: center;";
+        
+        const uiHtml = `
+            <div style="font-weight:bold; color:#007AFF; margin-bottom:10px;">🎯 觸控靶紙輸入 (點擊即記錄)</div>
+            <div style="position: relative; display: inline-block; width: 300px; height: 300px;">
+                <canvas id="targetCanvas" width="300" height="300" style="width:100%; height:100%; border-radius:50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); touch-action: none; cursor: crosshair;"></canvas>
+            </div>
+            <div style="margin-top: 10px; display: flex; gap: 10px; justify-content: center;">
+                <button id="btnUndoShot" style="width: auto; margin-top:0; padding: 8px 15px; font-size: 14px; background: #6c757d;">↩️ 復原一箭</button>
+                <button id="btnClearShots" style="width: auto; margin-top:0; padding: 8px 15px; font-size: 14px; background: #dc3545;">🗑️ 清空</button>
+            </div>
+            <div style="font-size: 13px; color: #666; margin-top: 5px;">已記錄: <span id="shotCounter" style="font-weight:bold; color:#007AFF;">0</span> / 12 箭</div>
+            <div style="font-size: 12px; color: #999; margin-top: 2px;">圓心為(0,0)，右+/左-，上+/下-</div>
+        `;
+        targetContainer.innerHTML = uiHtml;
+        
+        // 插入到 DOM
+        xSectionTitle.parentNode.insertBefore(targetContainer, xSectionTitle);
+
+        // 3. Canvas 繪圖邏輯
+        const canvas = document.getElementById('targetCanvas');
+        const ctx = canvas.getContext('2d');
+        const shotCounter = document.getElementById('shotCounter');
+        let shots = []; // 儲存 {x: cm, y: cm}
+
+        function drawTarget() {
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const radius = canvas.width / 2;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 繪製同心圓 (模擬靶紙) - 簡化版 5色
+            const colors = ['white', 'black', '#33adff', '#ff3333', '#ffe600']; // 1-2, 3-4, 5-6, 7-8, 9-10
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius * ((5 - i) / 5), 0, 2 * Math.PI);
+                ctx.fillStyle = colors[i];
+                ctx.fill();
+                ctx.strokeStyle = '#ddd';
+                ctx.stroke();
+            }
+            
+            // 繪製十字線
+            ctx.beginPath();
+            ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height);
+            ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy);
+            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            ctx.stroke();
+
+            // 繪製落點
+            shots.forEach((shot, index) => {
+                // 將 cm 轉回 canvas 像素
+                const faceSize = parseFloat(document.getElementById('faceSize').value) || 80;
+                const scale = faceSize / canvas.width; // cm per pixel
+                
+                const pixelX = cx + (shot.x / scale);
+                const pixelY = cy - (shot.y / scale); // Y軸反轉回來繪圖
+                
+                ctx.beginPath();
+                ctx.arc(pixelX, pixelY, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = '#00ff00'; // 綠色落點
+                ctx.fill();
+                ctx.strokeStyle = 'black';
+                ctx.stroke();
+                
+                // 標示序號
+                ctx.fillStyle = 'black';
+                ctx.font = '10px Arial';
+                ctx.fillText(index + 1, pixelX + 6, pixelY + 4);
+            });
+
+            shotCounter.innerText = shots.length;
+        }
+
+        // 4. 更新輸入框邏輯
+        function updateInputs() {
+            const xStr = shots.map(s => s.x.toFixed(2)).join(',');
+            const yStr = shots.map(s => s.y.toFixed(2)).join(',');
+            
+            document.getElementById('inX').value = xStr;
+            document.getElementById('inY').value = yStr;
+        }
+
+        // 5. 點擊處理
+        canvas.addEventListener('pointerdown', function(e) { // 使用 pointerdown 支援手機觸控
+            if (shots.length >= 12) {
+                alert('最多記錄 12 箭，請先清空或復原。');
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            // 計算點擊位置 (相對於 canvas 左上角)
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            
+            // 由於 canvas 樣式寬高可能跟實際屬性寬高不同 (響應式縮放)，需校正
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            const finalX = clickX * scaleX;
+            const finalY = clickY * scaleY;
+
+            // 轉換為座標系 (圓心 0,0)
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            
+            const dx_px = finalX - cx;
+            const dy_px = cy - finalY; // Canvas Y 向下，座標系 Y 向上，故反轉
+
+            // 轉換為公分 (根據選擇的靶紙尺寸)
+            const faceSize = parseFloat(document.getElementById('faceSize').value) || 80;
+            // 假設 canvas 寬度滿版代表靶紙直徑
+            const cmPerPixel = faceSize / canvas.width;
+            
+            const cmX = dx_px * cmPerPixel;
+            const cmY = dy_px * cmPerPixel;
+
+            shots.push({ x: cmX, y: cmY });
+            
+            drawTarget();
+            updateInputs();
+            
+            // 簡單震動回饋 (若裝置支援)
+            if (navigator.vibrate) navigator.vibrate(50);
+            
+            e.preventDefault(); // 防止滾動
+        });
+
+        // 6. 按鈕事件
+        document.getElementById('btnUndoShot').addEventListener('click', function() {
+            shots.pop();
+            drawTarget();
+            updateInputs();
+        });
+
+        document.getElementById('btnClearShots').addEventListener('click', function() {
+            if (confirm('確定清空所有落點？')) {
+                shots = [];
+                drawTarget();
+                updateInputs();
+            }
+        });
+
+        // 初始繪製
+        drawTarget();
+        
+        // 當靶紙尺寸改變時，重繪 (雖然座標不變，但若有已存點位邏輯上通常座標值固定，視覺比例會變，這裡簡化為重繪即可)
+        document.getElementById('faceSize').addEventListener('change', drawTarget);
+    });
+})();
+</script>
