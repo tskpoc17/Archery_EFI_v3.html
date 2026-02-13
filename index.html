@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>EFI 射箭雙軸診斷系統</title>
     <style>
+        /* 原始樣式 - 完全保留 */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; margin: 0; }
         .card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 480px; }
         h2 { text-align: center; color: #333; margin-top: 0; }
@@ -37,6 +38,8 @@
         </select>
         <input type="number" id="kValue" value="1" step="0.1" placeholder="K值">
     </div>
+
+    <div id="target-ui-area"></div>
 
     <div class="section-title">⚖️ X 軸水平座標cm </div>
     <div class="row">
@@ -85,6 +88,7 @@
 </div>
 
 <script>
+// --- 原始核心計算邏輯 (一字不差保留) ---
 function coreCalc(raw, d, k) {
     const avg = raw.reduce((a, b) => a + b) / raw.length;
     const R = raw.filter(v => v >= avg), L = raw.filter(v => v < avg);
@@ -168,120 +172,41 @@ function runDiag() {
 
 <script>
 (function() {
-    const STORAGE_KEY = 'archery_history_list';
     window.addEventListener('load', function() {
-        const mainBtn = document.querySelector('button[onclick="runDiag()"]');
-        if (!mainBtn) return;
-        const pluginContainer = document.createElement('div');
-        pluginContainer.style = "margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 1px solid #ddd;";
-        pluginContainer.innerHTML = `
-            <div style="font-weight:bold; font-size:14px; margin-bottom:10px; color:#555;">💾 歷史紀錄管理</div>
-            <button id="p_btnSave" style="width:100%; padding:0; height:48px; background:#28a745; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer; margin-bottom:12px; font-size:16px; display:flex; align-items:center; justify-content:center;">🕒 以當前時間儲存數據</button>
-            <div style="display:flex; gap:8px; align-items: center;">
-                <select id="p_recordSelect" style="flex:1.2; padding:0 10px; border-radius:8px; border:1px solid #ccc; height:48px; font-size:14px; background:white;"></select>
-                <button id="p_btnLoad" style="flex:2; height:48px; background:#6f42c1; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center;">載入紀錄</button>
-                <button id="p_btnDel" style="width:55px; height:48px; background:#dc3545; color:white; border:none; border-radius:8px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center;">刪除</button>
-            </div>
-        `;
-        mainBtn.parentNode.insertBefore(pluginContainer, mainBtn.nextSibling);
-        const recordSelect = document.getElementById('p_recordSelect');
-        const updateDropdown = () => {
-            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            recordSelect.innerHTML = '<option value="">紀錄</option>';
-            Object.keys(history).sort().reverse().forEach(time => {
-                const opt = document.createElement('option'); opt.value = time; opt.innerText = time;
-                recordSelect.appendChild(opt);
-            });
-        };
-        document.getElementById('p_btnSave').onclick = function() {
-            const now = new Date();
-            const timeKey = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
-            const currentData = { pxE: document.getElementById('pxE').value, pxM: document.getElementById('pxM').value, inX: document.getElementById('inX').value, pyE: document.getElementById('pyE').value, pyM: document.getElementById('pyM').value, inY: document.getElementById('inY').value, k: document.getElementById('kValue').value };
-            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            history[timeKey] = currentData;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-            updateDropdown();
-            alert('✅ 已存為：' + timeKey);
-        };
-        document.getElementById('p_btnLoad').onclick = function() {
-            const timeKey = recordSelect.value;
-            if (!timeKey) return alert('請選擇紀錄');
-            const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            const d = history[timeKey];
-            if (d) {
-                document.getElementById('pxE').value = d.pxE; document.getElementById('pxM').value = d.pxM; document.getElementById('inX').value = d.inX;
-                document.getElementById('pyE').value = d.pyE; document.getElementById('pyM').value = d.pyM; document.getElementById('inY').value = d.inY;
-                document.getElementById('kValue').value = d.k;
-                alert('📂 載入成功');
-            }
-        };
-        document.getElementById('p_btnDel').onclick = function() {
-            const timeKey = recordSelect.value;
-            if (!timeKey && confirm('確定刪除？')) {
-                const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-                delete history[timeKey];
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-                updateDropdown();
-            }
-        };
-        updateDropdown();
-        const originalRunDiag = window.runDiag;
-        window.runDiag = function() {
-            originalRunDiag();
-            const summaryText = document.getElementById('summaryText');
-            if (summaryText) {
-                const now = new Date();
-                const timeStr = `\n\n🕒 診斷時間：${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-                if (!summaryText.innerText.includes('🕒 診斷時間')) { summaryText.innerText += timeStr; }
-                else { summaryText.innerText = summaryText.innerText.replace(/🕒 診斷時間：.*/, `🕒 診斷時間：${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`); }
-            }
-        };
-    });
-})();
-</script>
+        const area = document.getElementById('target-ui-area');
+        if (!area) return;
 
-<script>
-(function() {
-    const TARGET_EXT_ID = 'archery_target_plugin';
-    const initTargetPlugin = () => {
-        if (document.getElementById(TARGET_EXT_ID)) return;
-        const insertionPoint = document.querySelector('.section-title');
-        if (!insertionPoint) return;
-
-        const container = document.createElement('div');
-        container.id = TARGET_EXT_ID;
-        container.style = "margin: 20px 0; padding: 15px; background: #fff; border: 2px solid #007AFF; border-radius: 20px; text-align: center; box-shadow: 0 4px 15px rgba(0,122,255,0.15);";
-        
-        container.innerHTML = `
-            <div style="font-weight:bold; color:#007AFF; margin-bottom:12px;">🎯 觸控靶紙落點輸入</div>
-            <div id="canvasWrapper" style="position: relative; display: inline-block; width: 300px; height: 300px; background:#f8f9fa; border-radius:50%; touch-action: none; -webkit-user-select: none;">
-                <canvas id="targetCanvas" width="300" height="300" style="width:300px; height:300px; border-radius:50%; cursor: crosshair; display:block;"></canvas>
-                <div id="targetLoupe" style="display: none; position: absolute; width: 120px; height: 120px; border: 3px solid #333; border-radius: 50%; background: #fff; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.4); pointer-events: none; z-index: 9999;">
-                    <canvas id="loupeCanvas" width="240" height="240" style="width:100%; height:100%;"></canvas>
-                    <div style="position:absolute; top:50%; left:0; width:100%; height:1px; background:rgba(255,0,0,0.7);"></div>
-                    <div style="position:absolute; top:0; left:50%; width:1px; height:100%; background:rgba(255,0,0,0.7);"></div>
+        area.innerHTML = `
+            <div style="margin: 20px 0; padding: 15px; background: #fff; border: 2px solid #007AFF; border-radius: 20px; text-align: center;">
+                <div style="font-weight:bold; color:#007AFF; margin-bottom:10px;">🎯 觸控靶紙落點輸入</div>
+                <div id="cWrapper" style="position: relative; display: inline-block; width: 300px; height: 300px; touch-action: none; background:#f8f9fa; border-radius:50%;">
+                    <canvas id="targetCanvas" width="300" height="300" style="width:300px; height:300px; border-radius:50%; display:block;"></canvas>
+                    <div id="loupe" style="display: none; position: absolute; width: 120px; height: 120px; border: 3px solid #333; border-radius: 50%; background: #fff; overflow: hidden; pointer-events: none; z-index: 999; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
+                        <canvas id="loupeCanvas" width="240" height="240" style="width:100%; height:100%;"></canvas>
+                        <div style="position:absolute; top:50%; left:0; width:100%; height:1px; background:rgba(255,0,0,0.6);"></div>
+                        <div style="position:absolute; top:0; left:50%; width:1px; height:100%; background:rgba(255,0,0,0.6);"></div>
+                    </div>
                 </div>
+                <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: center;">
+                    <button id="btnUndo" style="width:auto; padding: 10px 18px; background: #6c757d; font-size:14px; margin:0;">↩️ 復原</button>
+                    <button id="btnClear" style="width:auto; padding: 10px 18px; background: #dc3545; font-size:14px; margin:0;">🗑️ 清空</button>
+                </div>
+                <div style="font-size: 13px; color: #666; margin-top: 8px;">已記錄: <span id="tCount" style="font-weight:bold; color:#007AFF;">0</span> / 12 (長按拖曳，放開即記錄)</div>
             </div>
-            <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
-                <button id="targetUndo" style="width:auto; padding: 10px 20px; background: #6c757d; font-size:14px; margin:0;">↩️ 復原</button>
-                <button id="targetClear" style="width:auto; padding: 10px 20px; background: #dc3545; font-size:14px; margin:0;">🗑️ 清空</button>
-            </div>
-            <div style="font-size: 13px; color: #666; margin-top: 10px;">已記錄: <span id="targetCounter" style="font-weight:bold; color:#007AFF; font-size:16px;">0</span> / 12 箭 (拖曳以微調，放開記錄)</div>
         `;
-        insertionPoint.parentNode.insertBefore(container, insertionPoint);
 
         const canvas = document.getElementById('targetCanvas');
         const ctx = canvas.getContext('2d');
-        const loupe = document.getElementById('targetLoupe');
-        const loupeCanvas = document.getElementById('loupeCanvas');
-        const lCtx = loupeCanvas.getContext('2d');
+        const loupe = document.getElementById('loupe');
+        const lCanvas = document.getElementById('loupeCanvas');
+        const lCtx = lCanvas.getContext('2d');
         let shots = [];
-        let isDragging = false;
-        let lastTouchPos = { x: 150, y: 150 };
+        let isMoving = false;
+        let lastPos = { x: 150, y: 150 };
 
-        const drawTarget = (context, size, showShots = true) => {
-            const center = size / 2, r = size / 2;
-            context.clearRect(0, 0, size, size);
+        const drawTarget = (c, size, drawShots) => {
+            const mid = size / 2, r = size / 2;
+            c.clearRect(0, 0, size, size);
             const rings = [
                 {c: '#fff', r: 1.0}, {c: '#fff', r: 0.9}, // 1-2
                 {c: '#000', r: 0.8}, {c: '#000', r: 0.7}, // 3-4
@@ -290,21 +215,20 @@ function runDiag() {
                 {c: '#FFE600', r: 0.2}, {c: '#FFE600', r: 0.1}, // 9-10
                 {c: '#FFE600', r: 0.05} // X
             ];
-            rings.forEach((ring, i) => {
-                context.beginPath(); context.arc(center, center, r * ring.r, 0, Math.PI * 2);
-                context.fillStyle = ring.c; context.fill();
-                context.strokeStyle = (ring.c === '#000') ? '#666' : '#ccc';
-                context.lineWidth = 1; context.stroke();
+            rings.forEach(ring => {
+                c.beginPath(); c.arc(mid, mid, r * ring.r, 0, Math.PI * 2);
+                c.fillStyle = ring.c; c.fill();
+                c.strokeStyle = (ring.c === '#000') ? '#555' : '#ccc';
+                c.lineWidth = 1; c.stroke();
             });
-            if (showShots) {
-                const faceSize = parseFloat(document.getElementById('faceSize').value);
-                const scale = size / faceSize;
-                shots.forEach((s, idx) => {
-                    const px = center + (s.x * scale), py = center - (s.y * scale);
-                    context.beginPath(); context.arc(px, py, 4, 0, Math.PI * 2);
-                    context.fillStyle = '#00FF00'; context.fill();
-                    context.strokeStyle = '#000'; context.stroke();
-                    context.fillStyle = '#000'; context.font = '10px Arial'; context.fillText(idx+1, px+5, py-5);
+            if (drawShots) {
+                const fSize = parseFloat(document.getElementById('faceSize').value);
+                shots.forEach((s, i) => {
+                    const px = mid + (s.x * (size / fSize)), py = mid - (s.y * (size / fSize));
+                    c.beginPath(); c.arc(px, py, 4, 0, Math.PI * 2);
+                    c.fillStyle = '#00FF00'; c.fill();
+                    c.strokeStyle = '#000'; c.stroke();
+                    c.fillStyle = '#000'; c.font = '10px sans-serif'; c.fillText(i+1, px+5, py-5);
                 });
             }
         };
@@ -312,20 +236,82 @@ function runDiag() {
         const updateInputs = () => {
             document.getElementById('inX').value = shots.map(s => s.x.toFixed(1)).join(',');
             document.getElementById('inY').value = shots.map(s => s.y.toFixed(1)).join(',');
-            document.getElementById('targetCounter').innerText = shots.length;
+            document.getElementById('tCount').innerText = shots.length;
         };
 
-        const getPos = (e) => {
-            const rect = canvas.getBoundingClientRect();
+        const getXY = (e) => {
+            const b = canvas.getBoundingClientRect();
             const cx = e.touches ? e.touches[0].clientX : e.clientX;
             const cy = e.touches ? e.touches[0].clientY : e.clientY;
-            return {
-                x: (cx - rect.left) * (canvas.width / rect.width),
-                y: (cy - rect.top) * (canvas.height / rect.height),
-                cssX: cx - rect.left, cssY: cy - rect.top
-            };
+            return { x: (cx - b.left) * (300 / b.width), y: (cy - b.top) * (300 / b.height), cssX: cx - b.left, cssY: cy - b.top };
         };
 
-        const handleMove = (e) => {
-            if (!isDragging) return;
-    
+        const move = (e) => {
+            if (!isMoving) return; e.preventDefault();
+            const p = getXY(e); lastPos = p;
+            loupe.style.display = 'block';
+            loupe.style.left = (p.cssX - 60) + 'px'; loupe.style.top = (p.cssY - 140) + 'px';
+            lCtx.save(); lCtx.clearRect(0,0,240,240); lCtx.translate(120,120); lCtx.scale(2.5, 2.5); lCtx.translate(-p.x,-p.y);
+            drawTarget(lCtx, 300, true); lCtx.restore();
+        };
+
+        canvas.addEventListener('touchstart', (e) => { if(shots.length >= 12) return; isMoving = true; move(e); }, {passive:false});
+        window.addEventListener('touchmove', move, {passive:false});
+        window.addEventListener('touchend', () => {
+            if (!isMoving) return; isMoving = false; loupe.style.display = 'none';
+            const fSize = parseFloat(document.getElementById('faceSize').value);
+            shots.push({ x: (lastPos.x - 150) * (fSize / 300), y: (150 - lastPos.y) * (fSize / 300) });
+            drawTarget(ctx, 300, true); updateInputs();
+        });
+
+        document.getElementById('btnUndo').onclick = () => { shots.pop(); drawTarget(ctx, 300, true); updateInputs(); };
+        document.getElementById('btnClear').onclick = () => { if(confirm('清空？')){ shots=[]; drawTarget(ctx, 300, true); updateInputs(); }};
+        drawTarget(ctx, 300, true);
+    });
+})();
+</script>
+
+<script>
+(function() {
+    const KEY = 'archery_history_list';
+    window.addEventListener('load', function() {
+        const btn = document.querySelector('button[onclick="runDiag()"]');
+        const box = document.createElement('div');
+        box.style = "margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 1px solid #ddd;";
+        box.innerHTML = `
+            <div style="font-weight:bold; font-size:14px; margin-bottom:10px; color:#555;">💾 歷史紀錄管理</div>
+            <button id="pSave" style="width:100%; height:48px; background:#28a745; color:white; border:none; border-radius:10px; font-weight:bold; margin-bottom:12px;">🕒 儲存當前數據</button>
+            <div style="display:flex; gap:8px;">
+                <select id="pSel" style="flex:1.2; height:48px; border-radius:8px; border:1px solid #ccc; background:white; font-size:14px;"></select>
+                <button id="pLoad" style="flex:2; height:48px; background:#6f42c1; color:white; border:none; border-radius:8px; font-weight:bold;">載入</button>
+                <button id="pDel" style="width:55px; height:48px; background:#dc3545; color:white; border:none; border-radius:8px;">刪</button>
+            </div>
+        `;
+        btn.parentNode.insertBefore(box, btn.nextSibling);
+        const sel = document.getElementById('pSel');
+        const upd = () => {
+            const h = JSON.parse(localStorage.getItem(KEY) || '{}');
+            sel.innerHTML = '<option value="">紀錄</option>';
+            Object.keys(h).sort().reverse().forEach(t => { const o = document.createElement('option'); o.value=t; o.innerText=t; sel.appendChild(o); });
+        };
+        document.getElementById('pSave').onclick = () => {
+            const n = new Date(); const t = `${n.getFullYear()}/${n.getMonth()+1}/${n.getDate()} ${n.getHours().toString().padStart(2,'0')}:${n.getMinutes().toString().padStart(2,'0')}`;
+            const d = { pxE: document.getElementById('pxE').value, pxM: document.getElementById('pxM').value, inX: document.getElementById('inX').value, pyE: document.getElementById('pyE').value, pyM: document.getElementById('pyM').value, inY: document.getElementById('inY').value, k: document.getElementById('kValue').value };
+            const h = JSON.parse(localStorage.getItem(KEY) || '{}'); h[t] = d;
+            localStorage.setItem(KEY, JSON.stringify(h)); upd(); alert('已存');
+        };
+        document.getElementById('pLoad').onclick = () => {
+            const h = JSON.parse(localStorage.getItem(KEY) || '{}'); const d = h[sel.value];
+            if(d){ 
+                document.getElementById('pxE').value=d.pxE; document.getElementById('pxM').value=d.pxM; document.getElementById('inX').value=d.inX;
+                document.getElementById('pyE').value=d.pyE; document.getElementById('pyM').value=d.pyM; document.getElementById('inY').value=d.inY;
+                document.getElementById('kValue').value=d.k; alert('載入成功');
+            }
+        };
+        document.getElementById('pDel').onclick = () => { if(sel.value && confirm('刪除？')){ const h = JSON.parse(localStorage.getItem(KEY) || '{}'); delete h[sel.value]; localStorage.setItem(KEY, JSON.stringify(h)); upd(); } };
+        upd();
+    });
+})();
+</script>
+</body>
+</html>
