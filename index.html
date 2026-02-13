@@ -730,3 +730,146 @@ function runDiag() {
     });
 })();
 </script>
+<script>
+(function() {
+    // 1. 防重複執行檢查：如果已經存在該 ID，就不再插入
+    if (document.getElementById('targetInputExtension')) return;
+
+    const initExtension = () => {
+        // 2. 定位插入點 (尋找包含 "X 軸水平座標" 的區塊標題)
+        const allSections = Array.from(document.querySelectorAll('.section-title, b, span'));
+        const xTitle = allSections.find(el => el.innerText.includes('X 軸水平座標'));
+        if (!xTitle) return;
+
+        // 建立外掛容器
+        const container = document.createElement('div');
+        container.id = 'targetInputExtension';
+        container.style = "margin: 20px 0; padding: 15px; background: #fff; border: 2px dashed #007AFF; border-radius: 15px; text-align: center; position: relative; touch-action: none;";
+        
+        container.innerHTML = `
+            <div style="font-weight:bold; color:#007AFF; margin-bottom:12px;">🎯 觸控靶紙輸入 (拖曳瞄準)</div>
+            
+            <div id="canvasWrapper" style="position: relative; display: inline-block; width: 280px; height: 280px; background:#eee; border-radius:50%;">
+                <canvas id="targetCanvas" width="280" height="280" style="width:100%; height:100%; border-radius:50%; cursor: crosshair; display:block;"></canvas>
+                
+                <div id="loupe" style="display: none; position: absolute; width: 100px; height: 100px; border: 3px solid #333; border-radius: 50%; background: #fff; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.3); pointer-events: none; z-index: 100;">
+                    <canvas id="loupeCanvas" width="200" height="200" style="width:100%; height:100%;"></canvas>
+                    <div style="position:absolute; top:50%; left:0; width:100%; height:1px; background:rgba(255,0,0,0.8);"></div>
+                    <div style="position:absolute; top:0; left:50%; width:1px; height:100%; background:rgba(255,0,0,0.8);"></div>
+                </div>
+            </div>
+
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <button id="btnUndoShot" style="padding: 8px 18px; background: #6c757d; color:white; border:none; border-radius:8px;">↩️ 復原</button>
+                <button id="btnClearShots" style="padding: 8px 18px; background: #dc3545; color:white; border:none; border-radius:8px;">🗑️ 清空</button>
+            </div>
+            <div style="font-size: 13px; color: #666; margin-top: 10px;">已記錄: <span id="shotCounter" style="font-weight:bold; color:#007AFF;">0</span> / 12 箭</div>
+        `;
+
+        xTitle.parentElement.insertBefore(container, xTitle);
+
+        // 初始化變數
+        const canvas = document.getElementById('targetCanvas');
+        const ctx = canvas.getContext('2d');
+        const loupe = document.getElementById('loupe');
+        const loupeCanvas = document.getElementById('loupeCanvas');
+        const lCtx = loupeCanvas.getContext('2d');
+        let shots = [];
+        let isDragging = false;
+        let currentTouch = { x: 0, y: 0 };
+
+        // 繪製靶紙 (1-10分環 + X環)
+        const drawTarget = (context, w, h, showShots = true) => {
+            const cx = w / 2, cy = h / 2, r = w / 2;
+            context.clearRect(0, 0, w, h);
+            const rings = [
+                {c: '#fff', r: 1.0}, {c: '#fff', r: 0.9}, // 1-2
+                {c: '#000', r: 0.8}, {c: '#000', r: 0.7}, // 3-4
+                {c: '#00B4F0', r: 0.6}, {c: '#00B4F0', r: 0.5}, // 5-6
+                {c: '#FF3333', r: 0.4}, {c: '#FF3333', r: 0.3}, // 7-8
+                {c: '#FFE600', r: 0.2}, {c: '#FFE600', r: 0.1}, // 9-10
+                {c: '#FFE600', r: 0.05} // X
+            ];
+            rings.forEach((ring, i) => {
+                context.beginPath();
+                context.arc(cx, cy, r * ring.r, 0, Math.PI * 2);
+                context.fillStyle = ring.c;
+                context.fill();
+                context.lineWidth = (i === rings.length - 1) ? 0.5 : 1;
+                context.strokeStyle = (ring.c === '#000') ? '#eee' : '#999';
+                context.stroke();
+            });
+
+            if (showShots) {
+                const faceSize = parseFloat(document.getElementById('faceSize')?.value) || 80;
+                const pxPerCm = w / faceSize;
+                shots.forEach((s, i) => {
+                    const px = cx + (s.x * pxPerCm), py = cy - (s.y * pxPerCm);
+                    context.beginPath();
+                    context.arc(px, py, w * 0.015, 0, Math.PI * 2);
+                    context.fillStyle = '#00CC00';
+                    context.fill();
+                    context.stroke();
+                });
+            }
+        };
+
+        const updateData = () => {
+            // 座標取到小數點下一位
+            document.getElementById('inX').value = shots.map(s => s.x.toFixed(1)).join(',');
+            document.getElementById('inY').value = shots.map(s => s.y.toFixed(1)).join(',');
+            document.getElementById('shotCounter').innerText = shots.length;
+        };
+
+        const handlePointer = (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const pos = {
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height),
+                cssX: clientX - rect.left,
+                cssY: clientY - rect.top
+            };
+            currentTouch = pos;
+
+            if (isDragging) {
+                loupe.style.display = 'block';
+                loupe.style.left = (pos.cssX - 50) + 'px';
+                loupe.style.top = (pos.cssY - 120) + 'px';
+                lCtx.clearRect(0, 0, 200, 200);
+                lCtx.save();
+                lCtx.translate(100, 100);
+                lCtx.scale(2.5, 2.5);
+                lCtx.translate(-pos.x, -pos.y);
+                drawTarget(lCtx, 280, 280, true);
+                lCtx.restore();
+            }
+        };
+
+        canvas.addEventListener('touchstart', (e) => { if(shots.length < 12) isDragging = true; handlePointer(e); }, {passive:false});
+        window.addEventListener('touchmove', handlePointer, {passive:false});
+        window.addEventListener('touchend', () => {
+            if (!isDragging) return;
+            isDragging = false;
+            loupe.style.display = 'none';
+            const faceSize = parseFloat(document.getElementById('faceSize')?.value) || 80;
+            const cmX = (currentTouch.x - 140) * (faceSize / 280);
+            const cmY = (140 - currentTouch.y) * (faceSize / 280);
+            shots.push({x: cmX, y: cmY});
+            drawTarget(ctx, 280, 280);
+            updateData();
+        });
+
+        document.getElementById('btnUndoShot').onclick = () => { shots.pop(); drawTarget(ctx, 280, 280); updateData(); };
+        document.getElementById('btnClearShots').onclick = () => { if(confirm('重置？')){ shots=[]; drawTarget(ctx, 280, 280); updateData(); }};
+
+        drawTarget(ctx, 280, 280);
+    };
+
+    // 確保 DOM 載入後執行一次
+    if (document.readyState === 'complete') { initExtension(); } 
+    else { window.addEventListener('load', initExtension); }
+})();
+</script>
