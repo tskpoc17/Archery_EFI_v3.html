@@ -742,3 +742,161 @@ function runDiag() {
     else { window.addEventListener('load', initExtension); }
 })();
 </script>
+<script>
+(function() {
+    const EXT_ID = 'efi_target_extension';
+
+    const runExtension = () => {
+        // 1. 清理機制：如果已經存在，先移除舊的，避免重複
+        const oldExt = document.getElementById(EXT_ID);
+        if (oldExt) oldExt.remove();
+
+        // 2. 尋找插入點
+        const xTitle = Array.from(document.querySelectorAll('.section-title')).find(el => el.innerText.includes('X 軸水平座標'));
+        if (!xTitle) return;
+
+        // 3. 建立 UI
+        const container = document.createElement('div');
+        container.id = EXT_ID;
+        container.style = "margin: 20px 0; padding: 15px; background: #fff; border: 2px dashed #007AFF; border-radius: 15px; text-align: center; position: relative; touch-action: none; -webkit-user-select: none;";
+        
+        container.innerHTML = `
+            <div style="font-weight:bold; color:#007AFF; margin-bottom:12px;">🎯 觸控靶紙輸入 (拖曳瞄準)</div>
+            <div id="canvasWrapper" style="position: relative; display: inline-block; width: 280px; height: 280px; background:#f0f0f0; border-radius:50%;">
+                <canvas id="targetCanvas" width="280" height="280" style="width:280px; height:280px; border-radius:50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); cursor: crosshair;"></canvas>
+                <div id="loupe" style="display: none; position: absolute; width: 100px; height: 100px; border: 3px solid #333; border-radius: 50%; background: #fff; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.3); pointer-events: none; z-index: 999;">
+                    <canvas id="loupeCanvas" width="200" height="200" style="width:100%; height:100%;"></canvas>
+                    <div style="position:absolute; top:50%; left:0; width:100%; height:1px; background:rgba(255,0,0,0.8);"></div>
+                    <div style="position:absolute; top:0; left:50%; width:1px; height:100%; background:rgba(255,0,0,0.8);"></div>
+                </div>
+            </div>
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <button id="btnUndoShot" style="padding: 10px 20px; background: #6c757d; color:white; border:none; border-radius:8px; font-weight:bold;">↩️ 復原</button>
+                <button id="btnClearShots" style="padding: 10px 20px; background: #dc3545; color:white; border:none; border-radius:8px; font-weight:bold;">🗑️ 清空</button>
+            </div>
+            <div style="font-size: 14px; color: #666; margin-top: 10px;">已記錄: <span id="shotCounter" style="font-weight:bold; color:#007AFF; font-size:18px;">0</span> / 12 箭</div>
+        `;
+
+        xTitle.parentNode.insertBefore(container, xTitle);
+
+        const canvas = document.getElementById('targetCanvas');
+        const ctx = canvas.getContext('2d');
+        const loupe = document.getElementById('loupe');
+        const loupeCanvas = document.getElementById('loupeCanvas');
+        const lCtx = loupeCanvas.getContext('2d');
+        
+        let shots = [];
+        let isDragging = false;
+        let lastPos = { x: 140, y: 140 };
+
+        // 繪製標準靶紙 (含 1-10 環與 X 環)
+        const drawTarget = (cvsCtx, size, drawShots = true) => {
+            const center = size / 2;
+            const r = size / 2;
+            cvsCtx.clearRect(0, 0, size, size);
+
+            const rings = [
+                {c: '#fff', r: 1.0}, {c: '#fff', r: 0.9}, // 1, 2 (White)
+                {c: '#000', r: 0.8}, {c: '#000', r: 0.7}, // 3, 4 (Black)
+                {c: '#00B4F0', r: 0.6}, {c: '#00B4F0', r: 0.5}, // 5, 6 (Blue)
+                {c: '#FF3333', r: 0.4}, {c: '#FF3333', r: 0.3}, // 7, 8 (Red)
+                {c: '#FFE600', r: 0.2}, {c: '#FFE600', r: 0.1}, // 9, 10 (Yellow)
+                {c: '#FFE600', r: 0.05} // X-Ring
+            ];
+
+            rings.forEach((ring, i) => {
+                cvsCtx.beginPath();
+                cvsCtx.arc(center, center, r * ring.r, 0, Math.PI * 2);
+                cvsCtx.fillStyle = ring.c;
+                cvsCtx.fill();
+                cvsCtx.strokeStyle = (ring.c === '#000') ? '#555' : '#999';
+                cvsCtx.lineWidth = 1;
+                cvsCtx.stroke();
+            });
+
+            if (drawShots) {
+                const faceSize = parseFloat(document.getElementById('faceSize').value);
+                const pxScale = size / faceSize;
+                shots.forEach((s, idx) => {
+                    const px = center + (s.x * pxScale);
+                    const py = center - (s.y * pxScale);
+                    cvsCtx.beginPath();
+                    cvsCtx.arc(px, py, 5, 0, Math.PI * 2);
+                    cvsCtx.fillStyle = '#00FF00';
+                    cvsCtx.fill();
+                    cvsCtx.strokeStyle = '#000';
+                    cvsCtx.stroke();
+                });
+            }
+        };
+
+        const updateFields = () => {
+            document.getElementById('inX').value = shots.map(s => s.x.toFixed(1)).join(',');
+            document.getElementById('inY').value = shots.map(s => s.y.toFixed(1)).join(',');
+            document.getElementById('shotCounter').innerText = shots.length;
+        };
+
+        const getPos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height),
+                cssX: clientX - rect.left,
+                cssY: clientY - rect.top
+            };
+        };
+
+        const handleMove = (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const pos = getPos(e);
+            lastPos = pos;
+
+            loupe.style.display = 'block';
+            loupe.style.left = (pos.cssX - 50) + 'px';
+            loupe.style.top = (pos.cssY - 120) + 'px';
+
+            lCtx.save();
+            lCtx.clearRect(0, 0, 200, 200);
+            lCtx.translate(100, 100);
+            lCtx.scale(3, 3);
+            lCtx.translate(-pos.x, -pos.y);
+            drawTarget(lCtx, 280, true);
+            lCtx.restore();
+        };
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (shots.length >= 12) return alert("已記錄12箭");
+            isDragging = true;
+            handleMove(e);
+        }, {passive: false});
+
+        window.addEventListener('touchmove', handleMove, {passive: false});
+
+        window.addEventListener('touchend', () => {
+            if (!isDragging) return;
+            isDragging = false;
+            loupe.style.display = 'none';
+            
+            const faceSize = parseFloat(document.getElementById('faceSize').value);
+            const cmX = (lastPos.x - 140) * (faceSize / 280);
+            const cmY = (140 - lastPos.y) * (faceSize / 280);
+            
+            shots.push({ x: cmX, y: cmY });
+            drawTarget(ctx, 280);
+            updateFields();
+        });
+
+        document.getElementById('btnUndoShot').onclick = () => { shots.pop(); drawTarget(ctx, 280); updateFields(); };
+        document.getElementById('btnClearShots').onclick = () => { if(confirm('確定清空？')){ shots=[]; drawTarget(ctx, 280); updateFields(); }};
+
+        // 初始化繪製
+        setTimeout(() => drawTarget(ctx, 280), 100);
+    };
+
+    if (document.readyState === 'complete') runExtension();
+    else window.addEventListener('load', runExtension);
+})();
+</script>
