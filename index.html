@@ -439,3 +439,294 @@ function runDiag() {
     });
 })();
 </script>
+<script>
+(function() {
+    // 等待頁面載入完成
+    window.addEventListener('load', function() {
+        
+        // 1. 尋找插入點 (插在 "X 軸水平座標cm" 標題之前)
+        const allSectionTitles = document.querySelectorAll('.section-title');
+        let xSectionTitle = null;
+        for (let i = 0; i < allSectionTitles.length; i++) {
+            if (allSectionTitles[i].innerText.includes('X 軸水平座標')) {
+                xSectionTitle = allSectionTitles[i];
+                break;
+            }
+        }
+        if (!xSectionTitle) return;
+
+        // 2. 建立 UI 結構 (包含主畫布與隱藏的放大鏡)
+        const targetContainer = document.createElement('div');
+        targetContainer.style = "margin: 20px 0; padding: 10px; background: #fff; border: 2px dashed #007AFF; border-radius: 12px; text-align: center; position: relative; touch-action: none;";
+        
+        const uiHtml = `
+            <div style="font-weight:bold; color:#007AFF; margin-bottom:10px;">🎯 觸控靶紙輸入 (拖曳瞄準)</div>
+            
+            <div id="canvasWrapper" style="position: relative; display: inline-block; width: 300px; height: 300px;">
+                <canvas id="targetCanvas" width="300" height="300" style="width:100%; height:100%; border-radius:50%; box-shadow: 0 4px 10px rgba(0,0,0,0.1); cursor: crosshair;"></canvas>
+                
+                <div id="loupe" style="
+                    display: none;
+                    position: absolute;
+                    width: 100px;
+                    height: 100px;
+                    border: 3px solid #333;
+                    border-radius: 50%;
+                    background: #fff;
+                    overflow: hidden;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                    pointer-events: none; /* 讓事件穿透放大鏡 */
+                    z-index: 100;
+                ">
+                    <canvas id="loupeCanvas" width="200" height="200" style="width:100%; height:100%;"></canvas>
+                    <div style="position:absolute; top:50%; left:0; width:100%; height:1px; background:rgba(255,0,0,0.8);"></div>
+                    <div style="position:absolute; top:0; left:50%; width:1px; height:100%; background:rgba(255,0,0,0.8);"></div>
+                </div>
+            </div>
+
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <button id="btnUndoShot" style="width: auto; margin-top:0; padding: 8px 15px; font-size: 14px; background: #6c757d; color:white; border:none; border-radius:8px;">↩️ 復原</button>
+                <button id="btnClearShots" style="width: auto; margin-top:0; padding: 8px 15px; font-size: 14px; background: #dc3545; color:white; border:none; border-radius:8px;">🗑️ 清空</button>
+            </div>
+            <div style="font-size: 13px; color: #666; margin-top: 8px;">已記錄: <span id="shotCounter" style="font-weight:bold; color:#007AFF;">0</span> / 12 箭</div>
+            <div style="font-size: 12px; color: #999; margin-top: 2px;">長按拖曳以精準定位，放開即記錄</div>
+        `;
+        targetContainer.innerHTML = uiHtml;
+        xSectionTitle.parentNode.insertBefore(targetContainer, xSectionTitle);
+
+        // 3. 變數與 Canvas 設定
+        const canvas = document.getElementById('targetCanvas');
+        const ctx = canvas.getContext('2d');
+        const loupe = document.getElementById('loupe');
+        const loupeCanvas = document.getElementById('loupeCanvas');
+        const lCtx = loupeCanvas.getContext('2d');
+        const shotCounter = document.getElementById('shotCounter');
+        
+        let shots = []; // {x: cm, y: cm}
+        let isDragging = false;
+        let currentTouch = { x: 0, y: 0 }; // 當前手指位置 (像素)
+
+        // 4. 繪製靶紙函數 (共用)
+        function drawFace(context, width, height, withShots = true) {
+            const cx = width / 2;
+            const cy = height / 2;
+            const radius = width / 2;
+            
+            // 清空
+            context.clearRect(0, 0, width, height);
+            
+            // 定義色環 (由外而內: 1-2白, 3-4黑, 5-6藍, 7-8紅, 9-10黃)
+            // 標準靶每環寬度相等。半徑為 R。
+            // 1分環半徑 = R, 2分環 = 0.9R ... 10分環 = 0.1R
+            const rings = [
+                {color: 'white', r: 1.0},   // 1
+                {color: 'white', r: 0.9},   // 2
+                {color: 'black', r: 0.8},   // 3
+                {color: 'black', r: 0.7},   // 4
+                {color: '#00B4F0', r: 0.6}, // 5 (Blue)
+                {color: '#00B4F0', r: 0.5}, // 6
+                {color: '#FF3333', r: 0.4}, // 7 (Red)
+                {color: '#FF3333', r: 0.3}, // 8
+                {color: '#FFE600', r: 0.2}, // 9 (Yellow)
+                {color: '#FFE600', r: 0.1}, // 10
+                {color: '#FFE600', r: 0.05} // X (Inner 10) - 這裡用 0.05 模擬 X 圈
+            ];
+
+            rings.forEach((ring, idx) => {
+                context.beginPath();
+                context.arc(cx, cy, radius * ring.r, 0, 2 * Math.PI);
+                context.fillStyle = ring.color;
+                context.fill();
+                // 畫線 (X圈細一點，其他標準線)
+                context.lineWidth = (idx === rings.length - 1) ? 0.5 : 1;
+                context.strokeStyle = (ring.color === 'black') ? 'white' : '#999'; 
+                context.stroke();
+            });
+
+            // 畫十字中心線
+            context.beginPath();
+            context.moveTo(cx - 5, cy); context.lineTo(cx + 5, cy);
+            context.moveTo(cx, cy - 5); context.lineTo(cx, cy + 5);
+            context.lineWidth = 1;
+            context.strokeStyle = 'black';
+            context.stroke();
+
+            // 繪製已存在的落點 (僅在主畫布繪製，放大鏡重繪時會包含)
+            if (withShots) {
+                // 需要重新計算像素位置
+                const faceSize = parseFloat(document.getElementById('faceSize').value) || 80;
+                const pxPerCm = width / faceSize; 
+
+                shots.forEach((s, i) => {
+                    const px = cx + (s.x * pxPerCm);
+                    const py = cy - (s.y * pxPerCm); // Y反轉
+
+                    context.beginPath();
+                    context.arc(px, py, width * 0.015, 0, 2 * Math.PI); // 點的大小隨畫布縮放
+                    context.fillStyle = '#00CC00'; // 鮮綠色落點
+                    context.fill();
+                    context.strokeStyle = 'white';
+                    context.lineWidth = 1;
+                    context.stroke();
+                    
+                    // 序號
+                    context.fillStyle = 'black';
+                    context.font = 'bold ' + (width * 0.04) + 'px Arial';
+                    context.fillText(i + 1, px + (width*0.02), py);
+                });
+            }
+        }
+
+        // 5. 更新輸入框 (小數點一位)
+        function updateInputs() {
+            // map(s => s.x.toFixed(1)) 確保只有一位小數
+            const xStr = shots.map(s => s.x.toFixed(1)).join(',');
+            const yStr = shots.map(s => s.y.toFixed(1)).join(',');
+            
+            document.getElementById('inX').value = xStr;
+            document.getElementById('inY').value = yStr;
+            shotCounter.innerText = shots.length;
+        }
+
+        // 6. 互動邏輯 (核心：放大鏡與拖曳)
+        function getCanvasCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            // 兼容 Mouse 與 Touch
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // 處理 Canvas CSS 縮放導致的座標偏移
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY,
+                cssX: (clientX - rect.left), // 用於定位放大鏡 DOM
+                cssY: (clientY - rect.top)
+            };
+        }
+
+        // 觸控開始
+        function onPointerDown(e) {
+            if (shots.length >= 12) {
+                alert('已滿 12 箭，請先清空或復原。');
+                return;
+            }
+            e.preventDefault(); // 防止手機滾動
+            isDragging = true;
+            
+            const pos = getCanvasCoordinates(e);
+            currentTouch = pos;
+            
+            // 顯示放大鏡
+            loupe.style.display = 'block';
+            updateLoupe(pos);
+        }
+
+        // 觸控移動
+        function onPointerMove(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            const pos = getCanvasCoordinates(e);
+            currentTouch = pos;
+            updateLoupe(pos);
+        }
+
+        // 觸控結束 (確定落點)
+        function onPointerUp(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            loupe.style.display = 'none'; // 隱藏放大鏡
+
+            // 計算最終座標 (cm)
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const faceSize = parseFloat(document.getElementById('faceSize').value) || 80;
+            const cmPerPixel = faceSize / canvas.width;
+
+            const cmX = (currentTouch.x - cx) * cmPerPixel;
+            const cmY = (cy - currentTouch.y) * cmPerPixel; // Y反轉
+
+            shots.push({ x: cmX, y: cmY });
+            
+            drawFace(ctx, canvas.width, canvas.height); // 重繪主畫布(含新點)
+            updateInputs();
+            
+            // 震動回饋
+            if (navigator.vibrate) navigator.vibrate(30);
+        }
+
+        // 更新放大鏡內容
+        function updateLoupe(pos) {
+            // 1. 移動放大鏡 DOM 位置 (讓它出現在手指上方，避免擋住)
+            // 減去偏移量，讓放大鏡浮在手指上方
+            loupe.style.left = (pos.cssX - 50) + 'px'; // 50是寬度一半
+            loupe.style.top = (pos.cssY - 120) + 'px'; // 120讓它浮在手指上方一段距離
+
+            // 2. 繪製放大鏡內的 Canvas
+            // 我們需要畫一個「當前主畫布的局部放大版」
+            // 為了不畫到「還沒確定」的那個綠點，我們重新畫一次乾淨的靶面在 loupeCanvas 上
+            
+            // 技巧：先在放大鏡裡畫整個乾淨靶面
+            // 但這樣效能不好。更好的方式：
+            // 直接畫背景，然後移動 context 讓「手指位置」變成「放大鏡中心」
+            
+            const zoom = 2.5; // 放大倍率
+            
+            // 清除放大鏡
+            lCtx.clearRect(0, 0, loupeCanvas.width, loupeCanvas.height);
+            
+            lCtx.save();
+            // 移動原點到放大鏡中心
+            lCtx.translate(loupeCanvas.width/2, loupeCanvas.height/2);
+            // 縮放
+            lCtx.scale(zoom, zoom);
+            // 反向移動，將手指在主畫布的位置移到原點
+            lCtx.translate(-pos.x, -pos.y);
+            
+            // 在放大鏡裡重繪整個靶面和舊的點
+            drawFace(lCtx, canvas.width, canvas.height, true);
+            
+            lCtx.restore();
+        }
+
+        // 綁定事件 (支援 Touch 與 Mouse)
+        canvas.addEventListener('touchstart', onPointerDown, {passive: false});
+        canvas.addEventListener('touchmove', onPointerMove, {passive: false});
+        canvas.addEventListener('touchend', onPointerUp);
+        canvas.addEventListener('touchcancel', onPointerUp);
+        
+        // 滑鼠支援 (電腦版測試用)
+        canvas.addEventListener('mousedown', onPointerDown);
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+
+        // 按鈕事件
+        document.getElementById('btnUndoShot').addEventListener('click', function() {
+            shots.pop();
+            drawFace(ctx, canvas.width, canvas.height);
+            updateInputs();
+        });
+
+        document.getElementById('btnClearShots').addEventListener('click', function() {
+            if (confirm('確定清空所有落點？')) {
+                shots = [];
+                drawFace(ctx, canvas.width, canvas.height);
+                updateInputs();
+            }
+        });
+        
+        // 初始繪製
+        drawFace(ctx, canvas.width, canvas.height);
+        
+        // 當切換靶紙尺寸時，更新 (不需重繪，因為圖形比例不變，是計算邏輯變)
+        document.getElementById('faceSize').addEventListener('change', function(){
+            drawFace(ctx, canvas.width, canvas.height);
+            // 若切換尺寸，理論上已有點位的位置cm不變，但視覺位置會變？
+            // 這裡邏輯維持：點下去的位置對應的cm是固定的。
+        });
+    });
+})();
+</script>
