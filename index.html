@@ -69,20 +69,20 @@
             <div style="font-weight:bold; color:#007AFF; margin-bottom:12px;">📊 X 軸水平分析報告</div>
             <div class="stat-item"><span>本次 EFI 指標</span><span id="rxE" class="efi-val"></span></div>
             <div id="cxE" class="stat-item" style="display:none;"><span>EFI 趨勢</span><span id="dxE" class="stat-value"></span></div>
-            <div class="stat-item"><span>中心偏移平均</span><span id="offX" class="stat-value"></span></div>
-            <div class="stat-item"><span>動作一致性 (離差)</span><span id="madX" class="stat-value"></span></div>
-            <div id="cxM" class="stat-item" style="display:none;"><span>一致性趨勢</span><span id="dxM" class="stat-value"></span></div>
-            <div class="stat-item"><span>樣本誤差機率</span><span id="prX" class="stat-value"></span></div>
+            <div class="stat-item"><span>箭群準度數值(小較好)</span><span id="offX" class="stat-value"></span></div>
+            <div class="stat-item"><span>箭群精度數值 (小較好)</span><span id="madX" class="stat-value"></span></div>
+            <div id="cxM" class="stat-item" style="display:none;"><span>精度趨勢</span><span id="dxM" class="stat-value"></span></div>
+            <div class="stat-item"><span>誤差機率</span><span id="prX" class="stat-value"></span></div>
         </div>
 
         <div class="res-block">
             <div style="font-weight:bold; color:#007AFF; margin-bottom:12px;">📊 Y 軸垂直分析報告</div>
             <div class="stat-item"><span>本次 EFI 指標</span><span id="ryE" class="efi-val"></span></div>
             <div id="cyE" class="stat-item" style="display:none;"><span>EFI 趨勢</span><span id="dyE" class="stat-value"></span></div>
-            <div class="stat-item"><span>中心偏移平均</span><span id="offY" class="stat-value"></span></div>
-            <div class="stat-item"><span>動作一致性 (離差)</span><span id="madY" class="stat-value"></span></div>
-            <div id="cyM" class="stat-item" style="display:none;"><span>一致性趨勢</span><span id="dyM" class="stat-value"></span></div>
-            <div class="stat-item"><span>樣本誤差機率</span><span id="prY" class="stat-value"></span></div>
+            <div class="stat-item"><span>箭群準度數值(小較好)</span><span id="offY" class="stat-value"></span></div>
+            <div class="stat-item"><span>箭群精度數值 (小較好)</span><span id="madY" class="stat-value"></span></div>
+            <div id="cyM" class="stat-item" style="display:none;"><span>精度趨勢</span><span id="dyM" class="stat-value"></span></div>
+            <div class="stat-item"><span>誤差機率</span><span id="prY" class="stat-value"></span></div>
         </div>
     </div>
 </div>
@@ -159,7 +159,7 @@ function runDiag() {
     }
 
     const adjX = resX.avg < 0 ? "左" : "右";
-    const adjY = resY.avg < 0 ? "上" : "下";
+    const adjY = resY.avg < 0 ? "下" : "上";
     const bestX = resX.mR < resX.mL ? "右側" : "左側";
     const bestY = resY.mR < resY.mL ? "上側" : "下側";
 
