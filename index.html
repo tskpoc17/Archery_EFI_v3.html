@@ -98,8 +98,8 @@ function coreCalc(raw, d, k) {
         return a.reduce((p, c) => p + Math.abs(c - sA), 0) / a.length;
     };
     const mR = getM(R), mL = getM(L);
-    const dR = R.length ? Math.abs((R.reduce((a,b)=>a+b)/R.length)-avg) : 0;
-    const dL = L.length ? Math.abs((L.reduce((a,b)=>a+b)/L.length)-avg) : 0;
+   const dR = R.length ? (R.reduce((a, b) => a + Math.abs(b - avg), 0) / R.length) : 0;
+const dL = L.length ? (L.reduce((a, b) => a + Math.abs(b - avg), 0) / L.length) : 0;
     const pen = (k * dR) + (k * dL) + (k * (mR * R.length + mL * L.length) / raw.length);
     const efi = parseFloat((10 * ((d - pen) / d) + 1).toFixed(4));
     const mad = parseFloat(((R.length * mR) + (L.length * mL)) / raw.length);
