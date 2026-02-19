@@ -98,8 +98,8 @@ function coreCalc(raw, d, k) {
         return a.reduce((p, c) => p + Math.abs(c - sA), 0) / a.length;
     };
     const mR = getM(R), mL = getM(L);
-   const dR = R.length ? (R.reduce((a, b) => a + Math.abs(b - avg), 0) / R.length) : 0;
-const dL = L.length ? (L.reduce((a, b) => a + Math.abs(b - avg), 0) / L.length) : 0;
+    const dR = R.length ? (R.reduce((a, b) => a + Math.abs(b - avg), 0) / R.length) : 0;
+    const dL = L.length ? (L.reduce((a, b) => a + Math.abs(b - avg), 0) / L.length) : 0;
     const pen = (k * dR) + (k * dL) + (k * (mR * R.length + mL * L.length) / raw.length);
     const efi = parseFloat((10 * ((d - pen) / d) + 1).toFixed(4));
     const mad = parseFloat(((R.length * mR) + (L.length * mL)) / raw.length);
@@ -119,7 +119,7 @@ function runDiag() {
     const resY = coreCalc(yData, d, k);
 
     document.getElementById('rxE').innerText = resX.efi;
-    document.getElementById('offX').innerText = `${resX.avg.toFixed(2)} cm ${resX.avg < 0 ? "(偏左)" : "(偏右)"}`;
+    document.getElementById('offX').innerText = `總偏離: ${totalBias.toFixed(4)} (dR+dL)`;
     document.getElementById('madX').innerText = resX.mad.toFixed(2);
     const exX = resX.mR >= resX.mL ? {s:"右側", n:resX.nR} : {s:"左側", n:resX.nL};
     document.getElementById('prX').innerText = `${((exX.n/12)*100).toFixed(0)}% (${exX.s})`;
