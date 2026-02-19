@@ -119,7 +119,7 @@ function runDiag() {
     const resY = coreCalc(yData, d, k);
 
     document.getElementById('rxE').innerText = resX.efi;
-    document.getElementById('offX').innerText = `總偏離: ${totalBias.toFixed(4)} (dR+dL)`;
+    document.getElementById('offX').innerText = `${resX.avg.toFixed(2)} cm ${resX.avg < 0 ? "(偏左)" : "(偏右)"}`; 
     document.getElementById('madX').innerText = resX.mad.toFixed(2);
     const exX = resX.mR >= resX.mL ? {s:"右側", n:resX.nR} : {s:"左側", n:resX.nL};
     document.getElementById('prX').innerText = `${((exX.n/12)*100).toFixed(0)}% (${exX.s})`;
