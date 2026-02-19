@@ -200,7 +200,7 @@ function runDiag() {
         const loupe = document.getElementById('loupe');
         const lCanvas = document.getElementById('loupeCanvas');
         const lCtx = lCanvas.getContext('2d');
-        let shots = [];
+        window.shots = [];
         let isMoving = false;
         let lastPos = { x: 150, y: 150 };
 
