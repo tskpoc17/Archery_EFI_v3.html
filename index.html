@@ -313,5 +313,47 @@ function runDiag() {
     });
 })();
 </script>
+    <script>
+(function() {
+    // 攔截原始的 runDiag 函式
+    const originalRunDiag = window.runDiag;
+    
+    window.runDiag = function() {
+        // 1. 先執行原始程式的所有計算與顯示
+        if (typeof originalRunDiag === 'function') {
+            originalRunDiag();
+        }
+
+        // 2. 獲取數據重新計算 dR + dL
+        const xData = document.getElementById('inX').value.split(',').map(Number).filter(n => !isNaN(n));
+        const yData = document.getElementById('inY').value.split(',').map(Number).filter(n => !isNaN(n));
+
+        const getTotalBias = (raw) => {
+            if (raw.length < 2) return 0;
+            const avg = raw.reduce((a, b) => a + b) / raw.length;
+            const R = raw.filter(v => v >= avg);
+            const L = raw.filter(v => v < avg);
+            
+            // 每一筆數據與總平均差距的平均值
+            const dR = R.length ? (R.reduce((a, b) => a + Math.abs(b - avg), 0) / R.length) : 0;
+            const dL = L.length ? (L.reduce((a, b) => a + Math.abs(b - avg), 0) / L.length) : 0;
+            
+            return { total: dR + dL, avg: avg };
+        };
+
+        const resX = getTotalBias(xData);
+        const resY = getTotalBias(yData);
+
+        // 3. 覆寫 UI 顯示
+        // X 軸：顯示 dR+dL 以及 原始偏移方向
+        const dirX = resX.avg < 0 ? "(偏左)" : "(偏右)";
+        document.getElementById('offX').innerText = `${resX.total.toFixed(4)} ${dirX}`;
+
+        // Y 軸：顯示 dR+dL 以及 原始偏移方向
+        const dirY = resY.avg < 0 ? "(偏上)" : "(偏下)";
+        document.getElementById('offY').innerText = `${resY.total.toFixed(4)} ${dirY}`;
+    };
+})();
+</script>
 </body>
 </html>
