@@ -350,7 +350,7 @@ function runDiag() {
         document.getElementById('offX').innerText = `${resX.total.toFixed(4)} ${dirX}`;
 
         // Y 軸：顯示 dR+dL 以及 原始偏移方向
-        const dirY = resY.avg < 0 ? "(偏上)" : "(偏下)";
+        const dirY = resY.avg < 0 ? "(偏下)" : "(偏上)";
         document.getElementById('offY').innerText = `${resY.total.toFixed(4)} ${dirY}`;
     };
 })();
