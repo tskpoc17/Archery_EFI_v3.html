@@ -355,5 +355,83 @@ function runDiag() {
     };
 })();
 </script>
+    <script>
+(function() {
+    // 等待網頁載入後，攔截原本的 runDiag 函式
+    window.addEventListener('load', function() {
+        if (typeof window.runDiag === 'function') {
+            const originalRunDiag = window.runDiag;
+            
+            window.runDiag = function() {
+                // 1. 執行原始程式 (維持 EFI 計算與紀錄功能)
+                originalRunDiag();
+
+                // 2. 抓取輸入數據
+                const getVals = (id) => document.getElementById(id).value.split(',').map(Number).filter(n => !isNaN(n));
+                const xData = getVals('inX');
+                const yData = getVals('inY');
+
+                // 3. 核心數據處理函式
+                const getStats = (raw) => {
+                    if (raw.length < 2) return { total: 0, avg: 0, mL: 0, mR: 0 };
+                    const avg = raw.reduce((a, b) => a + b) / raw.length;
+                    const R = raw.filter(v => v >= avg), L = raw.filter(v => v < avg);
+                    
+                    const getDist = (arr, center) => arr.length ? (arr.reduce((p, c) => p + Math.abs(c - center), 0) / arr.length) : 0;
+                    
+                    // 計算組內各自的離差 (m)
+                    const getM = (group) => {
+                        if (!group.length) return 0;
+                        const sA = group.reduce((p, c) => p + c) / group.length;
+                        return getDist(group, sA);
+                    };
+
+                    return {
+                        total: getDist(R, avg) + getDist(L, avg), // dR + dL
+                        avg: avg,
+                        mL: getM(L),
+                        mR: getM(R)
+                    };
+                };
+
+                const resX = getStats(xData);
+                const resY = getStats(yData);
+
+                // 4. 更新畫面上的「偏差值」與「修正後的偏向標籤」
+                const dirX = resX.avg < 0 ? "(偏左)" : "(偏右)";
+                const dirY = resY.avg < 0 ? "(偏下)" : "(偏上)"; // 修正：負數顯示偏下
+                
+                document.getElementById('offX').innerText = `${resX.total.toFixed(4)} ${dirX}`;
+                document.getElementById('offY').innerText = `${resY.total.toFixed(4)} ${dirY}`;
+
+                // 5. 覆寫「綜合分析建議」區塊，呈現數據對照
+                const adjX = resX.avg < 0 ? "左" : "右";
+                const adjY = resY.avg < 0 ? "下" : "上";
+                
+                let summary = "";
+                // 以 dR+dL 判斷哪一軸散步最嚴重
+                if (resX.total > resY.total) {
+                    summary = "⚠️ 注意 X 軸 (水平)：水平散佈較大，請檢查放弦一致性、後手動作或弦影位置。";
+                } else if (resY.total > resX.total) {
+                    summary = "⚠️ 注意 Y 軸 (垂直)：垂直散佈較大，請檢查推弓壓力點穩定度、靠弦位置或前肩。";
+                } else {
+                    summary = "✅ 雙軸平衡：目前兩軸表現均等，請維持發力節奏。";
+                }
+
+                summary += `\n\n🛠️ **瞄準器調整建議**：\n將瞄準器向【${adjX}】且向【${adjY}】撥動。`;
+                summary += `\n\n📊 **雙側發力穩定度 (數值越小越穩)**：`;
+                summary += `\n水平 X 軸：左側【${resX.mL.toFixed(2)}】 vs 右側【${resX.mR.toFixed(2)}】`;
+                summary += `\n垂直 Y 軸：下側【${resY.mL.toFixed(2)}】 vs 上側【${resY.mR.toFixed(2)}】`;
+                summary += `\n\n💡 *提示：數值代表組內一致性。若數值接近但視覺上覺得散，以箭群跨度為準。*`;
+
+                document.getElementById('summaryText').innerText = summary;
+                
+                console.log("EFI 外掛數據更新完成：dL+dR 與雙側對照已掛載。");
+            };
+        }
+    });
+})();
+</script>
+
 </body>
 </html>
